@@ -38,5 +38,8 @@
     <ClInclude Include="src\lib\nlohmann\json.hpp">
       <Filter>Source Files\src\lib\nlohmann</Filter>
     </ClInclude>
+    <ClInclude Include="sha1.hpp">
+      <Filter>Source Files\src\lib</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

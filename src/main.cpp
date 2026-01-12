@@ -8,6 +8,37 @@
 #include "lib/nlohmann/json.hpp"
 #include <variant>
 #include <unordered_map>
+#include <windows.h>
+#include <wincrypt.h>
+
+#pragma comment(lib, "advapi32.lib")
+
+bool sha1_wincrypt(
+    const unsigned char* data,
+    DWORD dataLen,
+    unsigned char out[20]
+) {
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    DWORD hashLen = 20;
+
+    if (!CryptAcquireContext(&hProv, NULL, NULL,
+        PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return false;
+
+    if (!CryptCreateHash(hProv, CALG_SHA1, 0, 0, &hHash))
+        return false;
+
+    if (!CryptHashData(hHash, data, dataLen, 0))
+        return false;
+
+    if (!CryptGetHashParam(hHash, HP_HASHVAL, out, &hashLen, 0))
+        return false;
+
+    CryptDestroyHash(hHash);
+    CryptReleaseContext(hProv, 0);
+    return true;
+}
 
 using json = nlohmann::json;
 
@@ -245,6 +276,73 @@ public:
 
         throw std::runtime_error(std::string("Invalid bencode char: ") + c);
     }
+
+    std::vector<uint8_t> BencodeJson(const json& j) {
+        std::vector<uint8_t> out;
+
+        if (j.is_object()) {
+            out.push_back('d');
+
+            std::vector<std::string> keys;
+            for (auto& [k, _] : j.items())
+                keys.push_back(k);
+
+            std::sort(keys.begin(), keys.end());
+
+            for (const auto& k : keys) {
+                // key
+                auto len = std::to_string(k.size());
+                out.insert(out.end(), len.begin(), len.end());
+                out.push_back(':');
+                out.insert(out.end(), k.begin(), k.end());
+
+                // value
+                auto encoded_value = BencodeJson(j.at(k));
+                out.insert(out.end(),
+                    encoded_value.begin(),
+                    encoded_value.end());
+            }
+
+            out.push_back('e');
+        }
+        else if (j.is_array()) {
+            out.push_back('l');
+            for (const auto& v : j) {
+                auto encoded_item = BencodeJson(v);
+                out.insert(out.end(),
+                    encoded_item.begin(),
+                    encoded_item.end());
+            }
+            out.push_back('e');
+        }
+        else if (j.is_number_integer()) {
+            out.push_back('i');
+            auto num = std::to_string(j.get<long long>());
+            out.insert(out.end(), num.begin(), num.end());
+            out.push_back('e');
+        }
+        else if (j.is_string()) {
+            const auto& s = j.get<std::string>();
+            auto len = std::to_string(s.size());
+            out.insert(out.end(), len.begin(), len.end());
+            out.push_back(':');
+            out.insert(out.end(), s.begin(), s.end());
+        }
+        else if (j.is_binary()) {
+            // IMPORTANT: handles "pieces" correctly
+            const auto& b = (j.get_binary());
+            auto len = std::to_string(b.size());
+            out.insert(out.end(), len.begin(), len.end());
+            out.push_back(':');
+            out.insert(out.end(), b.begin(), b.end());
+        }
+        else {
+            throw std::runtime_error("Invalid JSON type for bencode");
+        }
+
+        return out;
+    }
+
 };
 
 int main(int argc, char* argv[]) {
@@ -294,9 +392,25 @@ int main(int argc, char* argv[]) {
         std::string info(std::filesystem::file_size(p), '_');//buffer creation
         file.read(info.data(), std::filesystem::file_size(p));//read file data into buffer
         //info holds .torrent file content
+
         TorrentParser parser(info);
         json torrent_data = parser.Parse();
-        std::cout << "Tracker URL : " << torrent_data["announce"] << "\n" << "Length : " << torrent_data["info"]["length"] << "\n";
+		//json info_dict = torrent_data["info"];
+        auto encoded_info = parser.BencodeJson(torrent_data["info"]);
+        unsigned char info_hash[20];
+
+        sha1_wincrypt(
+            encoded_info.data(),
+            (DWORD)encoded_info.size(),
+            info_hash
+        );
+        
+        std::cout << "Tracker URL : " << torrent_data["announce"] << "Length : "<<torrent_data["info"]["length"] << "\n";
+        std::cout << "Info Hash: ";
+        for (int i = 0; i < 20; i++) {
+            printf("%02x", info_hash[i]);
+        }
+		std::cout << std::endl;
     }
     else {
         std::cerr << "unknown command: " << command << std::endl;
