@@ -1,3 +1,9 @@
+#define WIN32_LEAN_AND_MEAN  
+
+#include <winsock2.h>        
+#include <windows.h>
+#include <wincrypt.h>
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -5,11 +11,11 @@
 #include <cstdlib>
 #include <fstream>
 #include <filesystem>
-#include "lib/nlohmann/json.hpp"
 #include <variant>
 #include <unordered_map>
-#include <windows.h>
-#include <wincrypt.h>
+
+#include "lib/nlohmann/json.hpp"
+#include <httplib.h>
 
 #pragma comment(lib, "advapi32.lib")
 
@@ -230,6 +236,19 @@ public:
 
 };
 
+std::string url_encode_bytes(unsigned char* url) {
+    std::string encoded_url;
+	static const char hex_chars[] = "0123456789ABCDEF";
+
+    for (int i = 0; i < 20; i++) {
+		unsigned char c = url[i];
+        encoded_url.push_back('%');
+        encoded_url.push_back(hex_chars[c >> 4]);
+        encoded_url.push_back(hex_chars[c & 0x0F]);
+    }
+	return encoded_url;
+}
+
 int main(int argc, char* argv[]) {
     // Flush after every std::cout / std::cerr
     std::cout << std::unitbuf;
@@ -318,6 +337,106 @@ int main(int argc, char* argv[]) {
             if (++idx % 20 == 0)
                 printf("\n");
         }
+    }
+    else if (command == "peers") {
+        std::string file_name = argv[2];
+        std::ifstream file(file_name, std::ios::binary);
+        if (!file) {
+            std::cerr << "Error opening file: " << file_name << std::endl;
+            return 1;
+        }
+        std::filesystem::path p{ argv[2] };//path creation base
+        std::string info(std::filesystem::file_size(p), '_');//buffer creation
+        file.read(info.data(), std::filesystem::file_size(p));//read file data into buffer
+        //info holds .torrent file content
+		TorrentParser parser(info);
+		json torrent_data = parser.Parse();
+		std::string tracker_url = torrent_data["announce"].get<std::string>();
+        //http://127.0.0.1:5173/announce
+        //scheme : http:// 
+        //hostport : 127.0.0.1:5173
+        //port : 5173
+        //host: 127.0.0.1
+        //path : announce
+
+        auto scheme_pos = tracker_url.find("://");
+        auto rest = (scheme_pos == std::string::npos) ? tracker_url :  tracker_url.substr(scheme_pos+3);
+        auto slash_pos = rest.find('/');
+        auto hostport = rest.substr(0, slash_pos);
+        std::string path = (slash_pos == std::string::npos) ? "/" : rest.substr(slash_pos);
+        std::string host = hostport;
+        int port = 80;
+        auto colon = hostport.find(":");
+        if (colon != std::string::npos) {
+            host = host.substr(0,colon);
+            port = std::stoi(host.substr(colon + 1));
+        }
+
+        httplib::Client cli(host, port);
+        auto encoded_info = parser.BencodeJson(torrent_data["info"]);
+        unsigned char info_hash[20];
+
+        sha1_wincrypt(
+            encoded_info.data(),
+            (DWORD)encoded_info.size(),
+            info_hash
+        );
+
+        std::string encoded_url = url_encode_bytes(info_hash);
+
+        std::string query =
+            path +
+            "?info_hash=" + encoded_url +
+            "&peer_id=-PC0001-123456789012"
+            "&port=6881"
+            "&uploaded=0"
+            "&downloaded=0"
+            "&left=" + std::to_string(torrent_data["info"]["length"].get<int64_t>()) +
+            "&compact=1";
+
+        httplib::Headers headers{};
+        httplib::Result res = cli.Get(query.c_str());
+        if (!res)
+        {
+            auto err = res.error(); // httplib::Error enum
+            std::cerr << "Request failed: " << httplib::to_string(err) << '\n';
+            return 1;
+        }
+ 
+        std::string const& response_body = res->body;
+        TorrentParser BencodeResponseParser(response_body);
+        json decoded_response = BencodeResponseParser.Parse();
+      
+        std::string const& peers_str = decoded_response.at("peers");
+
+        std::vector<uint8_t> peers(
+            peers_str.begin(),
+            peers_str.end()
+        );
+
+        if (peers.empty()) {
+            std::cout << "No peers returned by tracker (swarm empty)\n";
+            return 0; // or just skip peer parsing
+        }
+       
+        for (size_t i = 0; i < peers.size(); i += 6) {
+            uint8_t ip1 = peers[i + 0];
+            uint8_t ip2 = peers[i + 1];
+            uint8_t ip3 = peers[i + 2];
+            uint8_t ip4 = peers[i + 3];
+
+            uint16_t port =
+                (static_cast<uint16_t>(peers[i + 4]) << 8) |
+                peers[i + 5];
+
+            std::cout
+                << (int)ip1 << '.'
+                << (int)ip2 << '.'
+                << (int)ip3 << '.'
+                << (int)ip4
+                << ':' << port << '\n';
+        }
+
     }
     else {
         std::cerr << "unknown command: " << command << std::endl;

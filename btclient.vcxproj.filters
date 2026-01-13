@@ -22,12 +22,16 @@
     <Filter Include="Source Files\src\lib\nlohmann">
       <UniqueIdentifier>{17b07ccc-3440-4844-8698-fbce87001822}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\src\lib\http">
+      <UniqueIdentifier>{b3af6031-953a-4f6a-b573-5707fe04840a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include=".gitattributes" />
     <None Include=".gitignore" />
     <None Include="README.md" />
     <None Include="sample.torrent" />
+    <None Include="kali-linux-2025.4-installer-amd64.iso.torrent" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
@@ -40,6 +44,12 @@
     </ClInclude>
     <ClInclude Include="sha1.hpp">
       <Filter>Source Files\src\lib</Filter>
+    </ClInclude>
+    <ClInclude Include="httplib.h">
+      <Filter>Source Files\src\lib\http</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -103,6 +103,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)src/lib/http</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -126,6 +127,7 @@
   <ItemGroup>
     <None Include=".gitattributes" />
     <None Include=".gitignore" />
+    <None Include="kali-linux-2025.4-installer-amd64.iso.torrent" />
     <None Include="README.md" />
     <None Include="sample.torrent" />
   </ItemGroup>
@@ -133,6 +135,8 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="httplib.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="sha1.hpp" />
     <ClInclude Include="src\lib\nlohmann\json.hpp" />
   </ItemGroup>
