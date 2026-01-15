@@ -128,8 +128,10 @@
     <None Include=".gitattributes" />
     <None Include=".gitignore" />
     <None Include="kali-linux-2025.4-installer-amd64.iso.torrent" />
+    <None Include="kali-linux-2025.4-installer-everything-amd64.iso.torrent" />
     <None Include="README.md" />
     <None Include="sample.torrent" />
+    <None Include="TLOU.torrent" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp" />

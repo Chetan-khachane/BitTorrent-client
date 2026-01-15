@@ -32,6 +32,8 @@
     <None Include="README.md" />
     <None Include="sample.torrent" />
     <None Include="kali-linux-2025.4-installer-amd64.iso.torrent" />
+    <None Include="TLOU.torrent" />
+    <None Include="kali-linux-2025.4-installer-everything-amd64.iso.torrent" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.cpp">
