@@ -251,6 +251,270 @@ public:
 
 };
 
+
+class TorrentDownloader {
+private:
+	std::string output_path;
+	SOCKET* clientSocket;
+    json torrentFile;
+    std::vector<uint8_t> message_builder(uint8_t len,uint8_t id,const std::vector<uint8_t>& payload) {
+        std::vector<uint8_t> message;
+        uint32_t length = len + 5;
+        message.push_back((length >> 24) & 0xFF);
+		message.push_back((length >> 16) & 0xFF);
+		message.push_back((length >> 8) & 0xFF);
+		message.push_back(length & 0xFF);
+        message.push_back(id);
+        message.insert(message.end(), payload.begin(), payload.end());
+        return message;
+	}
+
+    bool send_all(void* buffer, size_t len) {
+        size_t transfered = 0;
+        char* buf = static_cast<char*>(buffer);
+        
+        while (transfered < len) {
+            int n = send(*clientSocket, buf + transfered, len - transfered, 0);
+            if (n == 0) return false;
+            if (n == SOCKET_ERROR) return false;
+            transfered += n;
+        }
+        return true;
+    }
+
+    bool recv_all(void* buffer, size_t bytes) {
+        size_t received = 0;
+        char* buf = static_cast<char*>(buffer);
+
+        while (received < bytes) {
+            int n = recv(*clientSocket,
+                buf + received,
+                bytes - received,
+                0);
+            if (n == 0) return false;
+            if (n == SOCKET_ERROR) return false;
+            received += n;
+        }
+        return true;
+    }
+    
+    void downloadPieces() {
+        //piece broken into 16KB equiv blocks
+        //send request 6
+        //with payload ::
+        //index : piece 0,piece 1...pieceN
+        //begin : piece 0 :: block 0,block 1...blockN
+        //length : 16Kb default for all blocks except last will be <= 16KB
+        long long piece_length = torrentFile["info"]["piece length"].get<long long>();
+        long long file_size = torrentFile["info"]["length"].get<long long>();
+        long long no_pieces = torrentFile["info"]["pieces"].get<std::string>().length() / (long long)20;
+        std::string filename = torrentFile["info"]["name"].get<std::string>();
+        long long no_blocks = (piece_length + ((16 * 1024) - 1)) / (16 * 1024);
+        std::ofstream create(filename, std::ios::binary);
+        create.close();
+        std::fstream out(
+            filename,
+            std::ios::in | std::ios::out | std::ios::binary
+        );
+
+        if (!out.is_open()) {
+            std::cerr << "FAILED to open sample.txt\n";
+        }
+        else {
+            std::cout << "File opened successfully\n";
+        }
+
+        int piece_idx = 0;
+
+        std::cout << "pieces length : " << piece_length << "\n";
+        std::cout << "file_size : " << file_size << "\n";
+        std::cout << "no_pieces : " << no_pieces << "\n";
+        std::cout << "filename : " << filename << "\n";
+        std::cout << "no_blocks : " << no_blocks << "\n";
+        std::cout << "piece requested : " << piece_idx << "\n";
+        //std::vector<uint8_t> buffer
+        //32768bytes === 
+        //1block  = 2^14 bytes
+
+        //so no of blocks : 2^14bytes/block * file bytes 
+        for (piece_idx = 0; piece_idx < no_pieces; piece_idx++) {
+            std::cout << "piece requested : " << piece_idx << "\n";
+            long long current_piece_size = piece_length;
+            if (piece_idx == no_pieces - 1) {//last block selected
+                int remainder = file_size % piece_length;
+                if (remainder != 0)
+                    current_piece_size = remainder;
+            }
+
+            std::vector<uint8_t> piece_buffer(current_piece_size);
+
+            for (int i = 0; i < no_blocks;) {
+                uint32_t this_block_len = 16 * 1024;
+                if (i == no_blocks - 1) {
+                    int remainder = current_piece_size % (16 * 1024);
+                    if (remainder != 0)
+                        this_block_len = remainder;
+                }
+                uint32_t send_msg_len = htonl(13);
+                uint8_t msg_id = 6;
+                uint32_t index = htonl(piece_idx);
+                uint32_t begin = htonl(i * (16 * 1024));
+                uint32_t length = htonl(this_block_len);
+
+
+                send_all(&send_msg_len, 4);
+                send_all(&msg_id, 1);
+                send_all(&index, 4);
+                send_all(&begin, 4);
+                send_all(&length, 4);
+
+
+                //wait for piece
+                uint32_t msg_len;
+                while (true) {
+                    recv_all(&msg_len, 4);
+                    msg_len = ntohl(msg_len);
+
+                    if (msg_len == 0) continue;//keep alive
+
+                    uint8_t msg_id;
+                    recv_all(&msg_id, 1);
+                    std::cout << msg_id << "\n";
+                    if (msg_id == 7)
+                        break;
+
+
+                    if (msg_id == 0) {
+                        std::cout << "Interested Peer Cancelled client request" << "\n";
+                        exit(0);
+                    }
+
+                    // skip payload safely
+                    std::vector<uint8_t> skip(msg_len - 1);
+                    recv_all(skip.data(), msg_len - 1);
+                }
+                //piece message received
+
+                //process payload from peer
+                uint32_t recv_idx, recv_begin;
+                recv_all(&recv_idx, 4);
+                recv_all(&recv_begin, 4);
+
+                recv_idx = ntohl(recv_idx);
+                recv_begin = ntohl(recv_begin);
+                std::cout << "index : " << recv_idx << " begin : " << recv_begin << "\n";
+
+                if (recv_idx != piece_idx) {
+                    // not the piece we want --- discard payload
+                    std::vector<uint8_t> skip(msg_len - 9);
+                    recv_all(skip.data(), msg_len - 9);
+                    std::cout << "wrong index skip" << "\n";
+                    continue; // or continue loop
+                }
+                int data_len = msg_len - 9;//id + index + begin
+                if (recv_begin != i * (16 * 1024) || recv_begin >= current_piece_size
+                    || recv_begin + data_len > current_piece_size) {
+                    // not the block we want --- discard payload
+                    std::vector<uint8_t> skip(msg_len - 9);
+                    recv_all(skip.data(), msg_len - 9);
+                    std::cout << "wrong beign skip" << "\n";
+
+                    continue; // or continue loop
+                }
+
+                //fetch data...
+                std::vector<uint8_t> block_data(data_len);
+                recv_all(block_data.data(), data_len);//received byte stream of data
+                std::cout << "correct block man" << "\n";
+
+                //pushing each byte into piece_buffer
+                std::memcpy(piece_buffer.data() + recv_begin,
+                    block_data.data(),
+                    data_len);
+                i++;
+            }
+
+            //the piece_buffer is complete
+            //checking hash
+
+            unsigned char piece_hash[20];
+            sha1_wincrypt(
+                piece_buffer.data(),
+                (DWORD)piece_buffer.size(),
+                piece_hash
+            );
+
+            std::cout << "The final hash is : " << "\n";
+            for (auto i : piece_hash) {
+                printf("%02x", i);
+            }
+           
+           
+            
+            size_t offset = piece_idx * piece_length;
+
+            out.seekp(offset);
+            out.write(
+               (char*)piece_buffer.data(),
+                current_piece_size
+            );
+			std::cout << "\nPiece " << piece_idx << " written to "<<filename << "\n";
+
+        }
+
+        std::cout << "Current working directory: "
+            << std::filesystem::current_path()
+            << std::endl;
+    }
+    
+public:
+	TorrentDownloader(const std::string& path,SOCKET* clientSocketReceived,json torrent) : output_path(path),clientSocket(clientSocketReceived),torrentFile(torrent) {}
+
+
+
+    void download() {
+		//sending interested message
+        std::vector<uint8_t> interested_message =  message_builder(1, 2, {});
+        send(*clientSocket,
+            reinterpret_cast<const char*>(interested_message.data()),
+            interested_message.size(),
+			0);
+
+        while (true) {
+            uint32_t msg_len;
+            recv_all(&msg_len, 4);
+            msg_len = ntohl(msg_len);
+
+            if (msg_len == 0) {
+                continue;
+            }//skip keep alive bytes
+
+            uint8_t msg_id;
+            recv_all(&msg_id, 1);
+            //if receive guarantted msg_id = 1 then proceed as unchoked by interested peer
+
+            if (msg_id == 1) {
+                // unchoke
+                break;
+            }
+            
+            if (msg_id == 0) {
+                std::cout << "Interested Peer Choked client" << "\n";
+                exit(0);
+            }
+
+            // skip payload safely
+            std::vector<uint8_t> skip(msg_len - 1);
+            recv_all(skip.data(), msg_len - 1);
+        }
+        //wait till unchoke happens by peer
+
+        //can send "request" messages now onwards
+        downloadPieces();
+    }
+
+};
+
 std::string url_encode_bytes(unsigned char* url) {
     std::string encoded_url;
 	static const char hex_chars[] = "0123456789ABCDEF";
@@ -372,6 +636,9 @@ int main(int argc, char* argv[]) {
     std::vector<uint8_t> encoded_info;
     std::vector<std::string> peers_fetched;
     SOCKET sockfd;
+    std::string output_path;
+
+   
 
     unsigned char info_hash[20];
 
@@ -577,7 +844,10 @@ int main(int argc, char* argv[]) {
             }
         }
         else if (command == 5) {
-
+			std::cout << "Enter below the file path to save the piece data: ";
+			std::cin >> output_path;
+			TorrentDownloader downloader(output_path,&sockfd,torrent_data);
+            downloader.download();
         }
         else if (command == 6) {
             exit(0);
