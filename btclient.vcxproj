@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -103,11 +103,12 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(ProjectDir)src/lib/http</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Program Files\OpenSSL-Win64\include;$(ProjectDir)\src\include;$(ProjectDir)\src\lib\nlohmann;$(ProjectDir)\src\lib\http</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>C:\Program Files\OpenSSL-Win64\lib\VC\x64\MTd;C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -118,28 +119,41 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>C:\Program Files\OpenSSL-Win64\include;$(ProjectDir)\src\include;$(ProjectDir)\src\lib\nlohmann;$(ProjectDir)\src\lib\http</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>C:\Program Files\OpenSSL-Win64\lib\VC\x64\MTd;C:\Program Files\OpenSSL-Win64\lib\VC\x64\MT</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include=".gitattributes" />
     <None Include=".gitignore" />
-    <None Include="kali-linux-2025.4-installer-amd64.iso.torrent" />
-    <None Include="kali-linux-2025.4-installer-everything-amd64.iso.torrent" />
     <None Include="README.md" />
-    <None Include="sample.torrent" />
-    <None Include="TLOU.torrent" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\bencode_parser.cpp" />
+    <ClCompile Include="src\BitTorrent_CLI.cpp" />
+    <ClCompile Include="src\DiskWriter.cpp" />
+    <ClCompile Include="src\downloader.cpp" />
+    <ClCompile Include="src\Encrypt.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\time.cpp" />
+    <ClCompile Include="src\TorrentManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="httplib.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="sha1.hpp" />
+    <ClInclude Include="src\include\bencrypt.h" />
+    <ClInclude Include="src\include\btcli.h" />
+    <ClInclude Include="src\include\btime.h" />
+    <ClInclude Include="src\include\DiskWriter.h" />
+    <ClInclude Include="src\include\TorrentDownloader.h" />
+    <ClInclude Include="src\include\TorrentManager.h" />
+    <ClInclude Include="src\include\TorrentParser.h" />
     <ClInclude Include="src\lib\nlohmann\json.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
